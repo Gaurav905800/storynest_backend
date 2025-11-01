@@ -104,23 +104,50 @@ const updateBlog = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Blog not found" });
 
-    if (req.user.id !== blog.author.toString() && req.user.role !== "admin") {
+    // ✅ Only author can update
+    if (req.user.id !== blog.author.toString()) {
       return res.status(403).json({ success: false, message: "Not allowed" });
     }
 
-    const updates = { ...req.body };
+    // Allowable fields to update
+    const allowed = [
+      "title",
+      "content",
+      "tags",
+      "category",
+      "status",
+      "published",
+    ];
+    const updates = {};
 
-    if (req.file) {
-      const relativePath = req.file.path.replace(/\\/g, "/");
-      updates.image = `${getBaseUrl(req)}/${relativePath}`;
+    for (const key of allowed) {
+      if (typeof req.body[key] !== "undefined") updates[key] = req.body[key];
     }
 
-    const updated = await Blog.findByIdAndUpdate(req.params.id, updates, {
+    // ✅ Handle image upload (if provided
+    if (req.file) {
+      const uploadResponse = await imagekit.upload({
+        file: fs.readFileSync(req.file.path),
+        fileName: req.file.originalname,
+        folder: "/storynet/blogs",
+      });
+
+      updates.image = uploadResponse.url;
+      fs.unlinkSync(req.file.path);
+    } else if (typeof req.body.image !== "undefined") {
+      updates.image = req.body.image;
+    }
+
+    const updatedBlog = await Blog.findByIdAndUpdate(req.params.id, updates, {
       new: true,
       runValidators: true,
     });
 
-    return res.json({ success: true, data: updated });
+    return res.json({
+      success: true,
+      message: "Blog updated successfully",
+      data: updatedBlog,
+    });
   } catch (err) {
     return res.status(400).json({ success: false, message: err.message });
   }
