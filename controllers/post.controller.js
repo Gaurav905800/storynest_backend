@@ -1,26 +1,29 @@
 const { Blog } = require("../models/post.model");
-const fs = require("fs");
 const imagekit = require("../config/imagekit");
-
-const getBaseUrl = (req) => {
-  const proto = req.headers["x-forwarded-proto"] || req.protocol;
-  return `${proto}://${req.get("host")}`;
-};
 
 const createBlog = async (req, res) => {
   try {
     const { title, content, tags, category } = req.body;
-
-    let image = req.body.image || null;
+    let uploadedImageUrl = null;
     if (req.file) {
+      const base64Image = req.file.buffer.toString("base64");
+      const mimeType = req.file.mimetype;
+
       const uploadResponse = await imagekit.upload({
-        file: fs.readFileSync(req.file.path),
-        fileName: req.file.originalname,
+        file: `data:${mimeType};base64,${base64Image}`,
+        fileName: `blog_${Date.now()}`,
         folder: "/storynet/blogs",
       });
 
-      image = uploadResponse.url;
-      fs.unlinkSync(req.file.path);
+      uploadedImageUrl = uploadResponse.url;
+    } else if (req.body.image && req.body.image.startsWith("data:image")) {
+      const uploadResponse = await imagekit.upload({
+        file: req.body.image,
+        fileName: `blog_${Date.now()}`,
+        folder: "/storynet/blogs",
+      });
+
+      uploadedImageUrl = uploadResponse.url;
     }
 
     const blog = await Blog.create({
@@ -28,7 +31,7 @@ const createBlog = async (req, res) => {
       content,
       tags,
       category,
-      image,
+      image: uploadedImageUrl,
       author: req.user.id,
       status: "pending",
     });
@@ -46,6 +49,7 @@ const createBlog = async (req, res) => {
 const getBlogs = async (req, res) => {
   try {
     const { q, category, tag, published, page = 1, limit = 10 } = req.query;
+
     const filters = {};
     if (q) {
       filters.$or = [
@@ -67,7 +71,7 @@ const getBlogs = async (req, res) => {
       Blog.countDocuments(filters),
     ]);
 
-    return res.json({
+    res.json({
       success: true,
       data: items,
       pagination: {
@@ -78,95 +82,93 @@ const getBlogs = async (req, res) => {
       },
     });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
-// Read one
 const getBlogById = async (req, res) => {
   try {
     const blog = await Blog.findById(req.params.id);
+
     if (!blog)
       return res
         .status(404)
         .json({ success: false, message: "Blog not found" });
-    return res.json({ success: true, data: blog });
+
+    res.json({ success: true, data: blog });
   } catch (err) {
-    return res.status(400).json({ success: false, message: "Invalid ID" });
+    res.status(400).json({ success: false, message: "Invalid ID" });
   }
 };
 
 const updateBlog = async (req, res) => {
   try {
-    const blog = await Blog.findById(req.params.id);
-    if (!blog)
-      return res
-        .status(404)
-        .json({ success: false, message: "Blog not found" });
+    const { title, content, tags, category } = req.body;
 
-    // ✅ Only author can update
-    if (req.user.id !== blog.author.toString()) {
-      return res.status(403).json({ success: false, message: "Not allowed" });
-    }
+    let uploadedImageUrl = null;
 
-    // Allowable fields to update
-    const allowed = [
-      "title",
-      "content",
-      "tags",
-      "category",
-      "status",
-      "published",
-    ];
-    const updates = {};
-
-    for (const key of allowed) {
-      if (typeof req.body[key] !== "undefined") updates[key] = req.body[key];
-    }
-
-    // ✅ Handle image upload (if provided
     if (req.file) {
+      const base64Image = req.file.buffer.toString("base64");
+      const mimeType = req.file.mimetype;
+
       const uploadResponse = await imagekit.upload({
-        file: fs.readFileSync(req.file.path),
-        fileName: req.file.originalname,
+        file: `data:${mimeType};base64,${base64Image}`,
+        fileName: `blog_${Date.now()}`,
         folder: "/storynet/blogs",
       });
 
-      updates.image = uploadResponse.url;
-      fs.unlinkSync(req.file.path);
-    } else if (typeof req.body.image !== "undefined") {
-      updates.image = req.body.image;
+      uploadedImageUrl = uploadResponse.url;
+    } else if (req.body.image && req.body.image.startsWith("data:image")) {
+      const uploadResponse = await imagekit.upload({
+        file: req.body.image,
+        fileName: `blog_${Date.now()}`,
+        folder: "/storynet/blogs",
+      });
+
+      uploadedImageUrl = uploadResponse.url;
     }
 
-    const updatedBlog = await Blog.findByIdAndUpdate(req.params.id, updates, {
-      new: true,
-      runValidators: true,
-    });
+    const updatedBlog = await Blog.findByIdAndUpdate(
+      req.params.id,
+      {
+        title,
+        content,
+        tags,
+        category,
+        ...(uploadedImageUrl && { image: uploadedImageUrl }),
+      },
+      { new: true }
+    );
 
-    return res.json({
+    res.json({
       success: true,
-      message: "Blog updated successfully",
+      message: "Blog updated",
       data: updatedBlog,
     });
   } catch (err) {
-    return res.status(400).json({ success: false, message: err.message });
+    res.status(400).json({ success: false, message: err.message });
   }
 };
 
+// Delete Blog
 const deleteBlog = async (req, res) => {
   try {
-    const blog = await Blog.findByIdAndDelete(req.params.id);
-    if (req.user.id !== blog.author.toString()) {
-      return res.status(403).json({ success: false, message: "Not allowed" });
-    }
+    const blog = await Blog.findById(req.params.id);
 
     if (!blog)
       return res
         .status(404)
         .json({ success: false, message: "Blog not found" });
-    return res.json({ success: true, message: "Blog deleted" });
+
+    if (req.user.id !== blog.author.toString()) {
+      return res.status(403).json({ success: false, message: "Not allowed" });
+    }
+
+    await blog.deleteOne();
+
+    res.json({ success: true, message: "Blog deleted" });
   } catch (err) {
-    return res.status(400).json({ success: false, message: "Invalid ID" });
+    res.status(400).json({ success: false, message: "Invalid ID" });
   }
 };
 

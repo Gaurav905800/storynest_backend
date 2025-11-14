@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const upload = require("../middleware/upload");
+const upload = require("../middleware/upload"); // <-- add
 const {
   createBlog,
   getBlogs,
@@ -8,6 +8,7 @@ const {
   deleteBlog,
 } = require("../controllers/post.controller");
 const { verifyToken } = require("../middleware/auth");
+
 const router = Router();
 
 router.post("/", verifyToken, upload.single("image"), createBlog);
