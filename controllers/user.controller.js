@@ -6,15 +6,8 @@ const jwt = require("jsonwebtoken");
 exports.signUp = async (req, res) => {
   try {
     const { username, email, password } = req.body;
-    const existingUser = await User.findOne({ email });
 
-    if (
-      [!username, !email, !password].some((field) => {
-        return field.trim() === "";
-      })
-    ) {
-      return res.json({ message: "All fileds are r" });
-    }
+    const existingUser = await User.findOne({ email });
 
     if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
@@ -78,7 +71,6 @@ exports.login = async (req, res) => {
         id: existingUser._id,
         username: existingUser.username,
         email: existingUser.email,
-        role: existingUser.role,
       },
     });
   } catch (err) {

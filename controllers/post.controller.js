@@ -19,8 +19,8 @@ const createBlog = async (req, res) => {
         folder: "/storynet/blogs",
       });
 
-      image = uploadResponse.url; // hosted image URL
-      fs.unlinkSync(req.file.path); // delete temp file
+      image = uploadResponse.url;
+      fs.unlinkSync(req.file.path);
     }
 
     const blog = await Blog.create({

@@ -5,7 +5,6 @@ const signupValidation = (req, res, next) => {
     username: Joi.string().min(3).max(100).required(),
     email: Joi.string().email().required(),
     password: Joi.string().min(4).max(10).required(),
-    role: Joi.string(),
   });
 
   const { error } = schema.validate(req.body);
