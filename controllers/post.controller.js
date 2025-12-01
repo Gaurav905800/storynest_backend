@@ -172,10 +172,50 @@ const deleteBlog = async (req, res) => {
   }
 };
 
+const toggleLikeBlog = async (req, res) => {
+  try {
+    const blogId = req.params.id;
+    const userId = req.user.id;
+
+    const blog = await Blog.findById(blogId);
+
+    if (!blog) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Blog not found" });
+    }
+
+    const alreadyLiked = blog.likedUsers.includes(userId);
+
+    if (alreadyLiked) {
+      blog.likedUsers = blog.likedUsers.filter(
+        (id) => id.toString() !== userId
+      );
+    } else {
+      blog.likedUsers.push(userId);
+    }
+
+    blog.likes = blog.likedUsers.length;
+    await blog.save();
+
+    return res.json({
+      success: true,
+      message: alreadyLiked ? "Blog unliked" : "Blog liked",
+      likes: blog.likes,
+      likedUsers: blog.likedUsers,
+    });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ success: false, message: err.message || "Server error" });
+  }
+};
+
 module.exports = {
   createBlog,
   getBlogs,
   getBlogById,
   updateBlog,
   deleteBlog,
+  toggleLikeBlog,
 };
